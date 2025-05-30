@@ -3,9 +3,6 @@ import requests
 import pandas as pd
 from datetime import datetime
 
-BASE_DAILY_URL_BCB_PTAX = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarDia(dataCotacao=@dataCotacao)"
-BASE_RANGE_URL_BCB_PTAX = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)?@dataInicial='MM-DD-YYYY'&@dataFinalCotacao='MM-DD-YYYY'&$format=json&$select=cotacaoCompra,cotacaoVenda,dataHoraCotacao"
-
 def format_date_for_api(date_obj: datetime) -> str:
     return date_obj.strftime('%m-%d-%Y')
 
@@ -26,9 +23,22 @@ def fetch_dollar_rate_for_period(start_date: datetime, end_date: datetime) -> pd
         )
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        quotation_data = response.json()
-        rates_list = quotation_data.get('value', [])
-        return pd.DataFrame(rates_list)
+        rates_list = response.json().get('value', [])
+        df = pd.DataFrame(rates_list)
+
+        if df.empty:
+            return df
+
+        # Adiciona a data base (sem hora) derivada do timestamp
+        df["data"] = pd.to_datetime(df["dataHoraCotacao"]).dt.date
+        df["atualizado_em"] = pd.to_datetime(df["dataHoraCotacao"])
+        df.rename(columns={
+            "cotacaoCompra": "compra",
+            "cotacaoVenda": "venda"
+        }, inplace=True)
+
+        return df[["data", "compra", "venda", "atualizado_em"]]
+
     except Exception as e:
         print(f'An error occurred: {e}')
         return pd.DataFrame()
